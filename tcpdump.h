@@ -3,7 +3,9 @@
 
 #include "error.h"
 
-error_status_t my_tcpdump();
+void sigint_handler(int sig);
+
+error_status_t my_tcpdump(const char* if_name);
 
 
 #endif //__TCPDUMP_H__

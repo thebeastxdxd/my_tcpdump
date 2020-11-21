@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 #include <argp.h>
 #include "tcpdump.h"
 
@@ -46,7 +47,10 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 int main(int argc, char** argv) {
 
     arguments_t arguments = {0};
-
+    struct sigaction sigint_act = {0};
+    sigint_act.sa_handler = sigint_handler;
+    sigaction(SIGINT, &sigint_act, NULL);
+    
     // Default values 
     arguments.output_file = NULL;
     arguments.interface = NULL;
@@ -54,7 +58,7 @@ int main(int argc, char** argv) {
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
     printf("interface=%s output_file=%s\n", arguments.interface, arguments.output_file);
-    my_tcpdump();
+    my_tcpdump(arguments.interface);
 
     return 0;
 

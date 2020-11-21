@@ -3,7 +3,7 @@ CC = gcc
 # OBJ variable is used to store all of the intermidate OBJs files we want
 OBJ = main.o tcpdump.o
 # add header files as dependencies so that when they are changed we recompile
-DEPS = error.h
+DEPS = error.h tcpdump.h
 
 TARGET = my_tcpdump
 
