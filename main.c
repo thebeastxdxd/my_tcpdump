@@ -1,3 +1,9 @@
+/* important repos that helped me
+ * tcpdump
+ * libpcap
+ * tklauser/filter2xdp
+ * netsniff-ng/netsniff-ng
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
