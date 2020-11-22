@@ -6,12 +6,15 @@
 #include <argp.h>
 #include "tcpdump.h"
 
+#define MAX_BPF_STR_LEN (255)
+
 static char doc[] = "my_tcpdump: a simple tcpdump implementation, for learning raw sockets.";
 static char args_doc[] = "bpf";
 
 typedef struct {
     char* output_file;
     char* interface;
+    char bpf[MAX_BPF_STR_LEN];
 } arguments_t;
 
 static struct argp_option options[] = {
@@ -32,6 +35,10 @@ static error_t parse_opt (int key, char* arg, struct argp_state* state) {
             break;
         case 'i':
             arguments->interface = arg;
+            break;
+        case ARGP_KEY_ARG:
+            strcat(arguments->bpf, arg);
+            strcat(arguments->bpf, " ");
             break;
         case ARGP_KEY_END:
             break;
@@ -56,9 +63,9 @@ int main(int argc, char** argv) {
     arguments.interface = NULL;
     
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
-
-    printf("interface=%s output_file=%s\n", arguments.interface, arguments.output_file);
-    my_tcpdump(arguments.interface);
+    
+    printf("interface=%s, output_file=%s, bpf=%s\n", arguments.interface, arguments.output_file, arguments.bpf);
+    my_tcpdump(arguments.interface, arguments.bpf);
 
     return 0;
 

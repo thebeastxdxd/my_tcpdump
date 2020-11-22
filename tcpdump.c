@@ -6,10 +6,14 @@
 #include <net/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <linux/filter.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <net/if_arp.h>
+
 #include "error.h"
+#include "bpf_pcap.h"
 
 // TODO: things i'm not sure about:
 // 1. after create_raw_socket should i pass the fd or a pointer to the fd
@@ -20,6 +24,8 @@
 // TODO: is this the correct size? 
 // TODO: doc why this size 
 #define BUF_SIZE (65537)
+#define MAX_BPF_LEN (50)
+#define EXP_BPF ("tcp port 80")
 
 static bool running = true;
 
@@ -28,6 +34,28 @@ void sigint_handler(int sig) {
 	running = false;
     return;
 
+}
+static error_status_t set_bpf(int sock, const char* bpf_str, int opt) {
+    error_status_t ret_status = SUCCESS_STATUS;
+    struct sock_fprog bpf_filter = {0};
+    struct sock_filter* bpf_buffer = NULL;
+    
+    CHECK(sock != -1);
+    CHECK(bpf_str != NULL);
+
+    bpf_buffer = malloc(sizeof(struct sock_filter) * MAX_BPF_LEN);
+    CHECK(bpf_buffer != NULL);
+
+    bpf_filter.filter =  bpf_buffer;
+
+    CHECK(compile_bpf(BUF_SIZE, &bpf_filter, bpf_str, opt) == SUCCESS_STATUS);
+
+    dump_bpf(&bpf_filter, 2); 
+    CHECK(setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_filter, sizeof(bpf_filter)) >= 0);
+
+cleanup:
+    free(bpf_buffer);
+    return ret_status;
 }
 
 static error_status_t iface_name_to_index(int sock, const char* if_name, int* if_index) {
@@ -46,7 +74,7 @@ static error_status_t iface_name_to_index(int sock, const char* if_name, int* if
 
     // ioctl for mapping if_name to if_index
     CHECK(ioctl(sock, SIOCGIFINDEX, &ifr) != -1);
-
+    
     *if_index = ifr.ifr_ifindex;
 
 cleanup:
@@ -160,7 +188,7 @@ cleanup:
     return ret_status;
 }
 
-error_status_t my_tcpdump(const char* if_name) {
+error_status_t my_tcpdump(const char* if_name, const char* bpf) {
     error_status_t ret_status = SUCCESS_STATUS;
     int raw_sock = -1;
 
@@ -170,6 +198,7 @@ error_status_t my_tcpdump(const char* if_name) {
     CHECK(iface_set_promisc(raw_sock, if_name, TRUE) == SUCCESS_STATUS);
     printf("set interface: %s to promisc\n", if_name);
 
+    CHECK(set_bpf(raw_sock, bpf, 1) == SUCCESS_STATUS);
 	CHECK(sniff(raw_sock) == SUCCESS_STATUS);
 
     // TODO: if something fails we don't exit promisc mode, 

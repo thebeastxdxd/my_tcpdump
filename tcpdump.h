@@ -5,7 +5,7 @@
 
 void sigint_handler(int sig);
 
-error_status_t my_tcpdump(const char* if_name);
+error_status_t my_tcpdump(const char* if_name, const char* bpf);
 
 
 #endif //__TCPDUMP_H__
