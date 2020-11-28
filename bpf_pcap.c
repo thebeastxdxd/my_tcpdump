@@ -12,7 +12,7 @@
  
 
 error_status_t dev_get_iftype(const char* if_name, int* link_type) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     int sock = -1;
     struct ifreq ifr = {0};
     size_t if_name_len = 0;
@@ -34,7 +34,7 @@ error_status_t dev_get_iftype(const char* if_name, int* link_type) {
     *link_type = ifr.ifr_hwaddr.sa_family;
 
 cleanup:
-    close(sock);
+    close(sock); // Best effort.
     return ret_status;
 }
 
@@ -44,7 +44,7 @@ error_status_t compile_bpf(int snaplen, struct sock_fprog* bpf_filter, const cha
     // loopback encapsulation.
     // netmask - is the IPv4 netmask of the network, for checking Ipv4 broadcast packets.
     // tcpdump -ddd passes 0 to netmask so i feel comfortable doing it too.
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     struct bpf_program _bpf = {0};
     const struct bpf_insn* ins = NULL;
     struct sock_filter* out = NULL;
@@ -63,6 +63,7 @@ error_status_t compile_bpf(int snaplen, struct sock_fprog* bpf_filter, const cha
     bpf_filter->filter = realloc(bpf_filter->filter, bpf_filter->len * sizeof(struct sock_filter));
     CHECK(bpf_filter->filter != NULL);
 
+    // TODO: should this be in a different function?
     for (i = 0, ins = _bpf.bf_insns, out = bpf_filter->filter; i < _bpf.bf_len; ++i, ++ins, ++out) {
         out->code = ins->code;
         out->jt = ins->jt;
@@ -78,7 +79,7 @@ error_status_t compile_bpf(int snaplen, struct sock_fprog* bpf_filter, const cha
     }
 
 cleanup:
-    pcap_freecode(&_bpf);
+    pcap_freecode(&_bpf); // Best effort.
     return ret_status;
 }
 

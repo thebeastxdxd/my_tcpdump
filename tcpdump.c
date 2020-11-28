@@ -16,16 +16,15 @@
 #include "bpf_pcap.h"
 
 // TODO: things i'm not sure about:
-// 1. after create_raw_socket should i pass the fd or a pointer to the fd
-// 2. if something happens should i close in that function or in 
+// 1. after create_raw_socket should i pass the sock_fd or a pointer to the sock_fd (right now its sock_fd)
+// 2. if a CHECK fails should i close the socket in that function or in 
 // an upper function(the function that create the socket)
-// 3. how do i create a good CHECK with custom error message
+// 3. how do i create a good CHECK with custom error message? should i just pass the error message?
 
-// TODO: is this the correct size? 
-// TODO: doc why this size 
+// TODO: doc why this size
 #define BUF_SIZE (65537)
+// TODO: this is kinda random
 #define MAX_BPF_LEN (50)
-#define EXP_BPF ("tcp port 80")
 
 static bool running = true;
 
@@ -35,8 +34,9 @@ void sigint_handler(int sig) {
     return;
 
 }
+
 static error_status_t set_bpf(int sock, const char* bpf_str, int opt) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     struct sock_fprog bpf_filter = {0};
     struct sock_filter* bpf_buffer = NULL;
     
@@ -48,18 +48,19 @@ static error_status_t set_bpf(int sock, const char* bpf_str, int opt) {
 
     bpf_filter.filter =  bpf_buffer;
 
-    CHECK(compile_bpf(BUF_SIZE, &bpf_filter, bpf_str, opt) == SUCCESS_STATUS);
+    CHECK_FUNC(compile_bpf(BUF_SIZE, &bpf_filter, bpf_str, opt));
 
+    // for debug purpose
     dump_bpf(&bpf_filter, 2); 
     CHECK(setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_filter, sizeof(bpf_filter)) >= 0);
 
 cleanup:
-    free(bpf_buffer);
+    free(bpf_buffer); // Best effort.
     return ret_status;
 }
 
 static error_status_t iface_name_to_index(int sock, const char* if_name, int* if_index) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     struct ifreq ifr = {0};
     size_t if_name_len = 0;
 
@@ -81,14 +82,14 @@ cleanup:
     return ret_status;
 }
 
-static error_status_t iface_set_promisc(int sock, const char* if_name, int set) {
-    error_status_t ret_status = SUCCESS_STATUS;
+static error_status_t iface_set_promisc(int sock, const char* if_name, bool set) {
+    error_status_t ret_status = STATUS_SUCCESS;
     int if_index = -1;
     int opt_name = -1;
     struct packet_mreq mreq = {0};
     
     CHECK(if_name != NULL);
-    CHECK(iface_name_to_index(sock, if_name, &if_index) == SUCCESS_STATUS);
+    CHECK_FUNC(iface_name_to_index(sock, if_name, &if_index));
 
     mreq.mr_ifindex = if_index;
     mreq.mr_type = PACKET_MR_PROMISC;
@@ -101,12 +102,12 @@ cleanup:
 }
 
 static error_status_t bind_raw_socket(int sock, const char* if_name) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     int if_index = -1;
     struct sockaddr_ll sll = {0};
     
     CHECK(if_name != NULL);
-    CHECK(iface_name_to_index(sock, if_name, &if_index) == SUCCESS_STATUS);
+    CHECK_FUNC(iface_name_to_index(sock, if_name, &if_index));
 
     // to bind a raw socket to a specific interface 
     sll.sll_family = AF_PACKET;
@@ -124,7 +125,7 @@ cleanup:
 }
 
 static error_status_t create_raw_socket(int* res) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     int sock = -1;
     
     CHECK(res != NULL);
@@ -140,7 +141,7 @@ cleanup:
     return ret_status;
 }
 static error_status_t handle_packet(unsigned char* packet) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     
     CHECK(packet != NULL);
 
@@ -156,7 +157,7 @@ cleanup:
 }
 
 static error_status_t sniff(int sock) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     struct sockaddr_ll sll = {0};
     socklen_t sll_len = sizeof(sll);
     unsigned char buffer[BUF_SIZE] = {0};
@@ -189,25 +190,23 @@ cleanup:
 }
 
 error_status_t my_tcpdump(const char* if_name, const char* bpf) {
-    error_status_t ret_status = SUCCESS_STATUS;
+    error_status_t ret_status = STATUS_SUCCESS;
     int raw_sock = -1;
 
-	// TODO: change logic if if_name is NULL
-    CHECK(create_raw_socket(&raw_sock) == SUCCESS_STATUS);
-    CHECK(bind_raw_socket(raw_sock, if_name) == SUCCESS_STATUS);
-    CHECK(iface_set_promisc(raw_sock, if_name, TRUE) == SUCCESS_STATUS);
+	// TODO: add logic if if_name is NULL
+    CHECK_FUNC(create_raw_socket(&raw_sock));
+    CHECK_FUNC(bind_raw_socket(raw_sock, if_name));
+    CHECK_FUNC(iface_set_promisc(raw_sock, if_name, true));
+    // TODO: maybe this should be in iface_set_promisc; but it feels like a side effect?
     printf("set interface: %s to promisc\n", if_name);
 
-    CHECK(set_bpf(raw_sock, bpf, 1) == SUCCESS_STATUS);
-	CHECK(sniff(raw_sock) == SUCCESS_STATUS);
+    CHECK_FUNC(set_bpf(raw_sock, bpf, 1));
+	CHECK_FUNC(sniff(raw_sock));
 
-    // TODO: if something fails we don't exit promisc mode, 
-    // but we don't want to put this in cleanup
-    CHECK(iface_set_promisc(raw_sock, if_name, FALSE) == SUCCESS_STATUS);
-    printf("unset interface: %s to promisc\n", if_name);
-    
+
 cleanup:
-    //TODO: i cant CHECK this close because its in cleanup and this can cause a loop, what do i do?
-	close(raw_sock);
+    // TODO: i cant CHECK this close because its in cleanup and this can cause a loop, what do i do?
+    iface_set_promisc(raw_sock, if_name, false); // Best effort.
+	close(raw_sock); // Best effort.
     return ret_status;
 }

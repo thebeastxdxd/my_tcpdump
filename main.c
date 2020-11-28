@@ -12,7 +12,14 @@
 #include <argp.h>
 #include "tcpdump.h"
 
+// TODO: fix, this is random
 #define MAX_BPF_STR_LEN (255)
+
+// TODO:
+// 1. clean this up, its nasty!
+// 2. figure out a better way then ARGP_KEY_ARG for BPF
+// 3. implement all the flags cool flags
+//
 
 static char doc[] = "my_tcpdump: a simple tcpdump implementation, for learning raw sockets.";
 static char args_doc[] = "bpf";
@@ -47,6 +54,7 @@ static error_t parse_opt (int key, char* arg, struct argp_state* state) {
             strcat(arguments->bpf, " ");
             break;
         case ARGP_KEY_END:
+            // TODO: am i supposed to do something here?
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -62,6 +70,7 @@ int main(int argc, char** argv) {
     arguments_t arguments = {0};
     struct sigaction sigint_act = {0};
     sigint_act.sa_handler = sigint_handler;
+
     sigaction(SIGINT, &sigint_act, NULL);
     
     // Default values 

@@ -9,7 +9,7 @@ DEPS = error.h tcpdump.h bpf_pcap.h
 TARGET = my_tcpdump
 
 # PHONY allows me to create a make rule that the rule's target is not actually a file
-.PHONY: clean, run
+.PHONY: clean run
 
 # rule for compiling all c files to objs
 # the $@ is an automatic variable which is replaced with the target name
@@ -19,10 +19,11 @@ TARGET = my_tcpdump
 
 # rule for our executable
 # the $^ is an automatic variable which is replaced with the list of dependencies
-TARGET: $(OBJ)
+$(TARGET): $(OBJ)
 	$(CC) -o $(TARGET) $^ $(CFLAGS)
 
-run: 
+# TODO: make this get params?
+run: $(TARGET)
 	sudo ./$(TARGET)	
 
 clean:
