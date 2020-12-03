@@ -11,9 +11,11 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <net/if_arp.h>
+#include <pcap/dlt.h>
 
 #include "error.h"
 #include "bpf_pcap.h"
+#include "pcap_file.h"
 
 // TODO: things i'm not sure about:
 // 1. after create_raw_socket should i pass the sock_fd or a pointer to the sock_fd (right now its sock_fd)
@@ -23,7 +25,7 @@
 
 // TODO: doc why this size
 #define BUF_SIZE (65537)
-// TODO: this is kinda random
+// TODO: fix, this is kinda random
 #define MAX_BPF_LEN (50)
 
 static bool running = true;
@@ -35,7 +37,7 @@ void sigint_handler(int sig) {
 
 }
 
-static error_status_t set_bpf(int sock, const char* bpf_str, int opt) {
+static error_status_t set_bpf(int sock, int link_type, const char* bpf_str, int opt) {
     error_status_t ret_status = STATUS_SUCCESS;
     struct sock_fprog bpf_filter = {0};
     struct sock_filter* bpf_buffer = NULL;
@@ -48,7 +50,7 @@ static error_status_t set_bpf(int sock, const char* bpf_str, int opt) {
 
     bpf_filter.filter =  bpf_buffer;
 
-    CHECK_FUNC(compile_bpf(BUF_SIZE, &bpf_filter, bpf_str, opt));
+    CHECK_FUNC(compile_bpf(BUF_SIZE, link_type, &bpf_filter, bpf_str, opt));
 
     // for debug purpose
     dump_bpf(&bpf_filter, 2); 
@@ -156,7 +158,7 @@ cleanup:
     return ret_status;
 }
 
-static error_status_t sniff(int sock) {
+static error_status_t sniff(int sock, int f_handle) {
     error_status_t ret_status = STATUS_SUCCESS;
     struct sockaddr_ll sll = {0};
     socklen_t sll_len = sizeof(sll);
@@ -181,32 +183,52 @@ static error_status_t sniff(int sock) {
 
         // printf("sockaddr info \n");
         // TODO: print sockaddr info?
-        
-        handle_packet((unsigned char*)&buffer);
+        if (f_handle != -1) { 
+            write_packet(f_handle, buffer, r_bytes);
+        } else {
+            handle_packet((unsigned char*)&buffer);
+        }
     }
 
 cleanup:
     return ret_status;
 }
 
-error_status_t my_tcpdump(const char* if_name, const char* bpf) {
+error_status_t my_tcpdump(const char* if_name, const char* output_file, const char* bpf) {
     error_status_t ret_status = STATUS_SUCCESS;
     int raw_sock = -1;
-
-	// TODO: add logic if if_name is NULL
+    int file_handle = -1;
+    int link_type = -1;
+    
     CHECK_FUNC(create_raw_socket(&raw_sock));
-    CHECK_FUNC(bind_raw_socket(raw_sock, if_name));
-    CHECK_FUNC(iface_set_promisc(raw_sock, if_name, true));
-    // TODO: maybe this should be in iface_set_promisc; but it feels like a side effect?
-    printf("set interface: %s to promisc\n", if_name);
 
-    CHECK_FUNC(set_bpf(raw_sock, bpf, 1));
-	CHECK_FUNC(sniff(raw_sock));
+    if (if_name != NULL) {
+        CHECK_FUNC(bind_raw_socket(raw_sock, if_name));
+        CHECK_FUNC(iface_set_promisc(raw_sock, if_name, true));
+        // TODO: maybe this should be in iface_set_promisc; but it feels like a side effect?
+        printf("set interface: %s to promisc\n", if_name);
+        CHECK_FUNC(dev_get_iftype(if_name, &link_type));
+    } else {
+        link_type = DLT_EN10MB; 
+    }
+
+    if (output_file != NULL) {
+        CHECK_FUNC(open_pcap_file(output_file, &file_handle, BUF_SIZE, link_type));
+    }
+    if (strlen(bpf) != 0) {
+        CHECK_FUNC(set_bpf(raw_sock, link_type, bpf, 1));
+    }
+
+	CHECK_FUNC(sniff(raw_sock, file_handle));
 
 
 cleanup:
     // TODO: i cant CHECK this close because its in cleanup and this can cause a loop, what do i do?
-    iface_set_promisc(raw_sock, if_name, false); // Best effort.
+    if (if_name != NULL) {
+        iface_set_promisc(raw_sock, if_name, false); // Best effort.
+    }
 	close(raw_sock); // Best effort.
+    // TODO: should i close even if i dont open?
+    close(file_handle); // Best effort.
     return ret_status;
 }

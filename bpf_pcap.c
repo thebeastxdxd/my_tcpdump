@@ -38,7 +38,7 @@ cleanup:
     return ret_status;
 }
 
-error_status_t compile_bpf(int snaplen, struct sock_fprog* bpf_filter, const char* bpf_str, int opt) {
+error_status_t compile_bpf(int snaplen, int link_type, struct sock_fprog* bpf_filter, const char* bpf_str, int opt) {
     // snaplen is  the maximum amount of data to be captured
     // linkytpe is the link layer type? DLT_EN10MB is for ethernet, there is also DLT_NULL for BSD
     // loopback encapsulation.
@@ -56,8 +56,7 @@ error_status_t compile_bpf(int snaplen, struct sock_fprog* bpf_filter, const cha
     CHECK(bpf_str != NULL);
 
     // TODO: print compiling failed.
-    // TODO: get correct linktype using dev_get_iftype
-    CHECK(pcap_compile_nopcap(snaplen, DLT_EN10MB, &_bpf, bpf_str, opt, (bpf_u_int32)0) != -1);
+    CHECK(pcap_compile_nopcap(snaplen, link_type, &_bpf, bpf_str, opt, (bpf_u_int32)0) != -1);
     
     bpf_filter->len = _bpf.bf_len;
     bpf_filter->filter = realloc(bpf_filter->filter, bpf_filter->len * sizeof(struct sock_filter));

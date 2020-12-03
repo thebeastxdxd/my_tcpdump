@@ -1,10 +1,10 @@
 # CC is a standard variable in Makefiles for the compiler used
 CC = gcc
 # OBJ variable is used to store all of the intermidate OBJs files we want
-OBJ = main.o tcpdump.o bpf_pcap.o
+OBJ = main.o tcpdump.o bpf_pcap.o pcap_file.o
 CFLAGS = -lpcap
 # add header files as dependencies so that when they are changed we recompile
-DEPS = error.h tcpdump.h bpf_pcap.h
+DEPS = error.h tcpdump.h bpf_pcap.h pcap_file.h
 
 TARGET = my_tcpdump
 
