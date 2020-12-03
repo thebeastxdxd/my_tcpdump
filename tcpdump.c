@@ -51,7 +51,7 @@ static error_status_t set_bpf(int sock, int link_type, const char* bpf_str, int 
     bpf_buffer = malloc(sizeof(struct sock_filter) * MAX_BPF_LEN);
     CHECK(bpf_buffer != NULL);
 
-    bpf_filter.filter =  bpf_buffer;
+    bpf_filter.filter = bpf_buffer;
 
     CHECK_FUNC(compile_bpf(MAX_PKT_LEN - 1, link_type, &bpf_filter, bpf_str, opt));
 
@@ -77,10 +77,9 @@ static error_status_t iface_name_to_index(int sock, const char* if_name, int* if
 
     CHECK_STR(if_name_len < sizeof(ifr.ifr_name), "Interface name too long");
     memcpy(ifr.ifr_name, if_name, if_name_len);
-
     // ioctl for mapping if_name to if_index
     CHECK(ioctl(sock, SIOCGIFINDEX, &ifr) != -1);
-    
+
     *if_index = ifr.ifr_ifindex;
 
 cleanup:
@@ -161,21 +160,22 @@ cleanup:
     return ret_status;
 }
 
-static error_status_t sniff(int sock, int f_handle) {
+static error_status_t sniff(int sock, int fd) {
     error_status_t ret_status = STATUS_SUCCESS;
     struct sockaddr_ll sll = {0};
     socklen_t sll_len = sizeof(sll);
     unsigned char buffer[MAX_PKT_LEN] = {0};
     ssize_t r_bytes = 0;
 
-    while(running) {
+    while (running) {
         // 0 is for the flags field, no special flags are used
-        r_bytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&sll, &sll_len);
+        r_bytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&sll,
+                           &sll_len);
         if (r_bytes == MAX_PKT_LEN) {
             printf("Packet len too long\n");
             continue;
         }
-        
+
         // TODO: is this the best way to handle this?
         // the problem here is that when we SIGINT recv terminates,
         // we want to handle this without CHECKing as it goes into cleanup.
@@ -183,15 +183,15 @@ static error_status_t sniff(int sock, int f_handle) {
             if (errno == EINTR) {
                 continue;
             }
-        } 
+        }
 
         CHECK(r_bytes < sizeof(buffer));
-        
+
         // TODO: print sockaddr info?
-        if (f_handle != -1) { 
-            write_packet(f_handle, buffer, r_bytes);
+        if (fd != -1) {
+            write_packet(fd, buffer, r_bytes);
         } else {
-            handle_packet((unsigned char*)&buffer);
+            handle_packet(buffer);
         }
     }
 
@@ -202,7 +202,7 @@ cleanup:
 error_status_t my_tcpdump(const char* if_name, const char* output_file, const char* bpf) {
     error_status_t ret_status = STATUS_SUCCESS;
     int raw_sock = -1;
-    int file_handle = -1;
+    int fd = -1;
     int link_type = -1;
     
     CHECK_FUNC(create_raw_socket(&raw_sock));
@@ -218,14 +218,14 @@ error_status_t my_tcpdump(const char* if_name, const char* output_file, const ch
     }
 
     if (output_file != NULL) {
-        CHECK_FUNC(open_pcap_file(output_file, &file_handle, MAX_PKT_LEN - 1, link_type));
+      CHECK_FUNC(open_pcap_file(output_file, &fd, MAX_PKT_LEN - 1, link_type));
     }
     if (strlen(bpf) != 0) {
         // the 1 is for optimizing the BPF
         CHECK_FUNC(set_bpf(raw_sock, link_type, bpf, 1));
     }
 
-	CHECK_FUNC(sniff(raw_sock, file_handle));
+    CHECK_FUNC(sniff(raw_sock, fd));
 
 cleanup:
     if (if_name != NULL) {
@@ -234,6 +234,6 @@ cleanup:
     }
 	close(raw_sock); // Best effort.
     // TODO: should i close even if i dont open?
-    close(file_handle); // Best effort.
+    close(fd); // Best effort.
     return ret_status;
 }
