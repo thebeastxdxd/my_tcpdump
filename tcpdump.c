@@ -23,8 +23,11 @@
 // an upper function(the function that create the socket)
 // 3. how do i create a good CHECK with custom error message? should i just pass the error message?
 
-// TODO: doc why this size
-#define BUF_SIZE (65537)
+// linux MTU (including loopback interface) defaults to 65536
+// to handle MSG_TRUNC without using recvmsg (and creating msghdr struct) we define the
+// size to be 1 byte bigger and check if a recieved packet is equal to MAX_PKT_LEN
+// snapshot len should then be MAX_PKT_LEN -1 
+#define MAX_PKT_LEN (65537)
 // TODO: fix, this is kinda random
 #define MAX_BPF_LEN (50)
 
@@ -50,9 +53,10 @@ static error_status_t set_bpf(int sock, int link_type, const char* bpf_str, int 
 
     bpf_filter.filter =  bpf_buffer;
 
-    CHECK_FUNC(compile_bpf(BUF_SIZE, link_type, &bpf_filter, bpf_str, opt));
+    CHECK_FUNC(compile_bpf(MAX_PKT_LEN - 1, link_type, &bpf_filter, bpf_str, opt));
 
     // for debug purpose
+    // the 2 stands for how i print the bpf 
     dump_bpf(&bpf_filter, 2); 
     CHECK(setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_filter, sizeof(bpf_filter)) >= 0);
 
@@ -71,8 +75,7 @@ static error_status_t iface_name_to_index(int sock, const char* if_name, int* if
     
     if_name_len = strlen(if_name);
 
-    // TODO: print interface name to long
-    CHECK(if_name_len < sizeof(ifr.ifr_name));
+    CHECK_STR(if_name_len < sizeof(ifr.ifr_name), "Interface name too long");
     memcpy(ifr.ifr_name, if_name, if_name_len);
 
     // ioctl for mapping if_name to if_index
@@ -98,6 +101,8 @@ static error_status_t iface_set_promisc(int sock, const char* if_name, bool set)
 
 	opt_name = set ? PACKET_ADD_MEMBERSHIP : PACKET_DROP_MEMBERSHIP;
     CHECK(setsockopt(sock, SOL_PACKET, opt_name, &mreq, sizeof(mreq)) != -1);
+    // TODO: this is a side effect. what if i don't want to print?
+    printf("set interface: %s to promisc %d\n", if_name, set);
 
 cleanup:
     return ret_status;
@@ -116,8 +121,7 @@ static error_status_t bind_raw_socket(int sock, const char* if_name) {
     sll.sll_protocol = htons(ETH_P_ALL);
     sll.sll_ifindex = if_index;
 
-    // TODO: print was not able to bind to interface and show errno string
-    CHECK(bind(sock, (struct sockaddr*)&sll, sizeof(sll)) >= 0);
+    CHECK_STR(bind(sock, (struct sockaddr*)&sll, sizeof(sll)) >= 0, "Failed binding to interface");
 
 cleanup:
     // TODO: i don't close here even if it fails because i want main func to close it? 
@@ -133,13 +137,10 @@ static error_status_t create_raw_socket(int* res) {
     CHECK(res != NULL);
 
     sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    // TODO: print cannot create raw socket
-    CHECK(sock >= 0);
+    CHECK_STR(sock >= 0, "Creating raw socket failed");
 
     *res = sock;
 cleanup:
-    // TODO: i don't close here even if it fails because i want main func to close it? 
-    //close(sock);
     return ret_status;
 }
 static error_status_t handle_packet(unsigned char* packet) {
@@ -147,13 +148,15 @@ static error_status_t handle_packet(unsigned char* packet) {
     
     CHECK(packet != NULL);
 
-
+    // Basic packet parser
+    // add more: ip level, tcp/udp, blah blah
     struct ethhdr* eth_h = (struct ethhdr*)packet;
 	printf("Ethernet Header\n");
 	printf("\t|-Source Address : %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", eth_h->h_source[0],eth_h->h_source[1],eth_h->h_source[2],
    		eth_h->h_source[3],eth_h->h_source[4],eth_h->h_source[5]);
 	printf("\t|-Destination Address : %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", eth_h->h_dest[0],eth_h->h_dest[1],eth_h->h_dest[2],
    		eth_h->h_dest[3],eth_h->h_dest[4],eth_h->h_dest[5]);
+
 cleanup:
     return ret_status;
 }
@@ -162,26 +165,28 @@ static error_status_t sniff(int sock, int f_handle) {
     error_status_t ret_status = STATUS_SUCCESS;
     struct sockaddr_ll sll = {0};
     socklen_t sll_len = sizeof(sll);
-    unsigned char buffer[BUF_SIZE] = {0};
-    size_t r_bytes = 0;
+    unsigned char buffer[MAX_PKT_LEN] = {0};
+    ssize_t r_bytes = 0;
 
     while(running) {
+        // 0 is for the flags field, no special flags are used
         r_bytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&sll, &sll_len);
-        // TODO: print error in reading recvfrom
-        //CHECK(r_bytes >= 0);
-        // TODO: print frame too large
+        if (r_bytes == MAX_PKT_LEN) {
+            printf("Packet len too long\n");
+            continue;
+        }
+        
         // TODO: is this the best way to handle this?
         // the problem here is that when we SIGINT recv terminates,
         // we want to handle this without CHECKing as it goes into cleanup.
-        if ( r_bytes == -1 ) {
+        if (r_bytes == -1) {
             if (errno == EINTR) {
                 continue;
             }
         } 
+
         CHECK(r_bytes < sizeof(buffer));
         
-
-        // printf("sockaddr info \n");
         // TODO: print sockaddr info?
         if (f_handle != -1) { 
             write_packet(f_handle, buffer, r_bytes);
@@ -204,27 +209,27 @@ error_status_t my_tcpdump(const char* if_name, const char* output_file, const ch
 
     if (if_name != NULL) {
         CHECK_FUNC(bind_raw_socket(raw_sock, if_name));
+        // TODO: should i first check/save the interface's current state?
         CHECK_FUNC(iface_set_promisc(raw_sock, if_name, true));
-        // TODO: maybe this should be in iface_set_promisc; but it feels like a side effect?
-        printf("set interface: %s to promisc\n", if_name);
         CHECK_FUNC(dev_get_iftype(if_name, &link_type));
     } else {
+        // TODO: is this a good default? 
         link_type = DLT_EN10MB; 
     }
 
     if (output_file != NULL) {
-        CHECK_FUNC(open_pcap_file(output_file, &file_handle, BUF_SIZE, link_type));
+        CHECK_FUNC(open_pcap_file(output_file, &file_handle, MAX_PKT_LEN - 1, link_type));
     }
     if (strlen(bpf) != 0) {
+        // the 1 is for optimizing the BPF
         CHECK_FUNC(set_bpf(raw_sock, link_type, bpf, 1));
     }
 
 	CHECK_FUNC(sniff(raw_sock, file_handle));
 
-
 cleanup:
-    // TODO: i cant CHECK this close because its in cleanup and this can cause a loop, what do i do?
     if (if_name != NULL) {
+        // is is bad if it fails? is there a better place to put this?
         iface_set_promisc(raw_sock, if_name, false); // Best effort.
     }
 	close(raw_sock); // Best effort.

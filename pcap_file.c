@@ -15,8 +15,7 @@ error_status_t open_pcap_file(const char *file_name, int* file_handle, uint32_t 
     CHECK(file_name != NULL);
     CHECK(file_handle != NULL);
 
-    // TODO: handle overwrite
-    handle = open(file_name, O_CREAT | O_WRONLY);
+    handle = open(file_name, O_CREAT | O_RDWR | O_TRUNC, 644);
     CHECK(handle != -1);
 
     // pcap magic number
@@ -24,6 +23,7 @@ error_status_t open_pcap_file(const char *file_name, int* file_handle, uint32_t 
     // current file format version
     file_header.version_major = 2;
     file_header.version_minor = 4;
+    // ignoring time stuff
     file_header.thiszone = 0;
     file_header.sigfigs = 0;
     file_header.snaplen = snaplen;
@@ -46,6 +46,7 @@ error_status_t write_packet(int handle, unsigned char* packet_buf, size_t packet
     CHECK(handle != -1);
     CHECK(packet_buf != NULL);
     
+    // TODO: give packet time info
     packet_hdr.ts_sec = 0;
     packet_hdr.ts_usec = 0;
     packet_hdr.incl_len = packet_len;

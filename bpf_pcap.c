@@ -55,8 +55,7 @@ error_status_t compile_bpf(int snaplen, int link_type, struct sock_fprog* bpf_fi
     CHECK(bpf_filter->filter != NULL);
     CHECK(bpf_str != NULL);
 
-    // TODO: print compiling failed.
-    CHECK(pcap_compile_nopcap(snaplen, link_type, &_bpf, bpf_str, opt, (bpf_u_int32)0) != -1);
+    CHECK_STR(pcap_compile_nopcap(snaplen, link_type, &_bpf, bpf_str, opt, (bpf_u_int32)0) != -1, "Unable to compile give BPF");
     
     bpf_filter->len = _bpf.bf_len;
     bpf_filter->filter = realloc(bpf_filter->filter, bpf_filter->len * sizeof(struct sock_filter));

@@ -39,7 +39,6 @@ static int create_bpf_exp(char* bpf_buf, int bpf_max_len, char** bpf_argv, int b
     char* p_bpf_end = bpf_buf + bpf_max_len;
     int i = 0;
 
-    printf("%d\n", bpf_argv_len);
     while (p_bpf < p_bpf_end && i < bpf_argv_len) {
         p_bpf = cat(p_bpf, p_bpf_end, bpf_argv[i]);    
         if (p_bpf == NULL) 
